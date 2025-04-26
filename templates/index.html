@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Эко игра</title>
+    <style>
+        /* Основные стили для игры */
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            touch-action: none;
+        }
+        
+        .draggable {
+            width: 100px;
+            height: 100px;
+            background-color: #4CAF50;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: grab;
+            position: absolute;
+            user-select: none;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            z-index: 10;
+        }
+        
+        .draggable:active {
+            cursor: grabbing;
+            transform: scale(1.05);
+            z-index: 100;
+        }
+        
+        #object1 { top: 20px; left: 20px; }
+        #object2 { top: 20px; left: 150px; background-color: #2196F3; }
+        #object3 { top: 20px; left: 280px; background-color: #ff9800; }
+        
+        .drop-zone {
+            width: 200px;
+            height: 200px;
+            background-color: #f1f1f1;
+            border: 3px dashed #ccc;
+            position: absolute;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+        
+        #dropZone1 { right: 500px; top: 500px; }
+        #dropZone2 { right: 50px; top: 200px; }
+        #dropZone3 { right: 1713px; top: 713px; }
+        
+        .drop-zone.highlight {
+            border-color: #4CAF50;
+            background-color: #e8f5e9;
+        }
+        
+        .shrinking-object {
+            width: 100px;
+            height: 100px;
+            background-color: #9c27b0;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: absolute;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            bottom: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            transition: transform 0.5s ease, opacity 0.5s ease;
+        }
+        
+        /* Стили для превью и таймера */
+        #preview {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #3498db;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            transition: opacity 0.5s;
+        }
+        
+        #timer-container {
+            display: none;
+            padding-top: 50px;
+        }
+        
+        #timer {
+            font-size: 3em;
+            margin: 20px;
+        }
+        
+        /* Стили для настроек */
+        .settings-gear {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 40px;
+            height: 40px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            z-index: 1000;
+        }
+        
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(5px);
+            z-index: 999;
+            display: none;
+        }
+        
+        .settings-window {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80%;
+            max-width: 500px;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            z-index: 1001;
+            display: none;
+        }
+        
+        .restart-btn {
+            padding: 10px 20px;
+            margin-top: 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <!-- Основные игровые элементы будут создаваться через JavaScript -->
+    
+    <!-- Кнопка настроек -->
+    <button class="settings-gear" id="settingsButton" aria-label="Настройки"></button>
+    
+    <!-- Экран приветствия -->
+    <center>
+        <div id="preview">
+            <h1>Добро пожаловать в эко игру!</h1>
+            <p>начать заново можно в настройках</p>
+            <p>Когда будете готовы, нажмите "Старт"</p>
+            <button id="startPreview">Старт</button>
+        </div>
+        
+        <!-- Таймер -->
+        <div id="timer-container">
+            <div id="timer">60.000</div>
+            <div>
+                <button id="stopBtn" class="timer-btn" disabled>Стоп</button>
+            </div>
+            <div id="alert"></div>
+        </div>
+    </center>
+    
+    <!-- Окно настроек -->
+    <div class="overlay" id="overlay"></div>
+    <div class="settings-window" id="settingsWindow">
+        <button class="close-btn" id="closeBtn">&times;</button>
+        <h2>Настройки</h2>
+        <div class="setting-item">
+            <label for="volume">Громкость:</label>
+            <input type="range" id="volume" min="0" max="100">
+        </div>
+        <button id="restartBtn" class="restart-btn">Заново</button>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // 1. СОЗДАНИЕ ИГРОВЫХ ЭЛЕМЕНТОВ
+        const gameContainer = document.body;
+        
+        // Параметры игровых объектов
+        const gameElements = {
+            objects: [
+                { id: 'object1', target: 'dropZone1', text: 'Объект 1', x: 20, y: 20, color: '#4CAF50' },
+                { id: 'object2', target: 'dropZone2', text: 'Объект 2', x: 150, y: 20, color: '#2196F3' },
+                { id: 'object3', target: 'dropZone3', text: 'Объект 3', x: 280, y: 20, color: '#ff9800' }
+            ],
+            dropZones: [
+                { id: 'dropZone1', text: 'Для Объекта 1', right: 500, top: 500 },
+                { id: 'dropZone2', text: 'Для Объекта 2', right: 50, top: 200 },
+                { id: 'dropZone3', text: 'Для Объекта 3', right: 1713, top: 713 }
+            ]
+        };
+        
+        // Создаем игровые элементы
+        function createGameElements() {
+            // Создаем перетаскиваемые объекты
+            gameElements.objects.forEach(obj => {
+                const element = document.createElement('div');
+                element.className = 'draggable';
+                element.id = obj.id;
+                element.dataset.target = obj.target;
+                element.textContent = obj.text;
+                element.style.left = obj.x + 'px';
+                element.style.top = obj.y + 'px';
+                element.style.backgroundColor = obj.color;
+                gameContainer.appendChild(element);
+            });
+            
+            // Создаем зоны сброса
+            gameElements.dropZones.forEach(zone => {
+                const element = document.createElement('div');
+                element.className = 'drop-zone';
+                element.id = zone.id;
+                element.textContent = zone.text;
+                element.style.right = zone.right + 'px';
+                element.style.top = zone.top + 'px';
+                gameContainer.appendChild(element);
+            });
+            
+            // Создаем объект 4 (который уменьшается)
+            const object4 = document.createElement('div');
+            object4.className = 'shrinking-object';
+            object4.id = 'object4';
+            object4.textContent = 'Объект 4';
+            gameContainer.appendChild(object4);
+        }
+        
+        // Удаляем все игровые элементы
+        function removeGameElements() {
+            document.querySelectorAll('.draggable, .drop-zone, .shrinking-object').forEach(el => el.remove());
+        }
+        
+        // Сбрасываем игру
+        function resetGame() {
+            removeGameElements();
+            createGameElements();
+            initDraggables();
+            
+            // Сбрасываем объект 4
+            const object4 = document.getElementById('object4');
+            object4.style.transform = 'translateX(-50%) scale(1)';
+            object4.style.opacity = '1';
+        }
+        
+        // 2. ФУНКЦИОНАЛ ПЕРЕТАСКИВАНИЯ
+        function initDraggables() {
+            const draggables = document.querySelectorAll('.draggable');
+            const dropZones = document.querySelectorAll('.drop-zone');
+            
+            // Сохраняем исходные позиции
+            const originalPositions = {};
+            draggables.forEach(item => {
+                const rect = item.getBoundingClientRect();
+                originalPositions[item.id] = {
+                    x: rect.left,
+                    y: rect.top
+                };
+            });
+            
+            let currentDraggedItem = null;
+            let currentTargetDropZone = null;
+            let offsetX, offsetY;
+            
+            // Назначение обработчиков
+            draggables.forEach(item => {
+                // Удаляем старые обработчики
+                item.removeEventListener('mousedown', startDrag);
+                item.removeEventListener('touchstart', startDrag);
+                
+                // Добавляем новые
+                item.addEventListener('mousedown', startDrag);
+                item.addEventListener('touchstart', startDrag, { passive: false });
+            });
+            
+            // Функция начала перетаскивания
+            function startDrag(e) {
+                currentDraggedItem = this;
+                currentTargetDropZone = document.getElementById(this.dataset.target);
+                this.style.transition = 'none';
+                
+                const clientX = e.clientX || e.touches[0].clientX;
+                const clientY = e.clientY || e.touches[0].clientY;
+                const rect = this.getBoundingClientRect();
+                
+                offsetX = clientX - rect.left;
+                offsetY = clientY - rect.top;
+                
+                if (e.type === 'touchstart') e.preventDefault();
+            }
+            
+            // Функция перемещения
+            function drag(e) {
+                if (!currentDraggedItem) return;
+                
+                const clientX = e.clientX || e.touches[0].clientX;
+                const clientY = e.clientY || e.touches[0].clientY;
+                
+                let newX = clientX - offsetX;
+                let newY = clientY - offsetY;
+                
+                const maxX = window.innerWidth - currentDraggedItem.offsetWidth;
+                const maxY = window.innerHeight - currentDraggedItem.offsetHeight;
+                
+                newX = Math.max(0, Math.min(newX, maxX));
+                newY = Math.max(0, Math.min(newY, maxY));
+                
+                currentDraggedItem.style.left = newX + 'px';
+                currentDraggedItem.style.top = newY + 'px';
+                
+                if (currentTargetDropZone) {
+                    const dropRect = currentTargetDropZone.getBoundingClientRect();
+                    const itemRect = currentDraggedItem.getBoundingClientRect();
+                    
+                    const isOverlapping = !(
+                        itemRect.right < dropRect.left || 
+                        itemRect.left > dropRect.right || 
+                        itemRect.bottom < dropRect.top || 
+                        itemRect.top > dropRect.bottom
+                    );
+                    
+                    currentTargetDropZone.classList.toggle('highlight', isOverlapping);
+                }
+                
+                if (e.type === 'touchmove') e.preventDefault();
+            }
+            
+            // Функция завершения перетаскивания
+            function endDrag() {
+                if (!currentDraggedItem || !currentTargetDropZone) return;
+                
+                const dropRect = currentTargetDropZone.getBoundingClientRect();
+                const itemRect = currentDraggedItem.getBoundingClientRect();
+                
+                const isOverlapping = !(
+                    itemRect.right < dropRect.left || 
+                    itemRect.left > dropRect.right || 
+                    itemRect.bottom < dropRect.top || 
+                    itemRect.top > dropRect.bottom
+                );
+                
+                if (isOverlapping) {
+                    // Правильно разместили объект
+                    currentDraggedItem.classList.add('hidden');
+                    currentTargetDropZone.classList.add('hidden');
+                    
+                    setTimeout(() => {
+                        currentDraggedItem.remove();
+                        currentTargetDropZone.remove();
+                        
+                        // Проверяем, все ли объекты размещены
+                        if (document.querySelectorAll('.draggable').length === 0) {
+                            alert('Поздравляем! Все объекты размещены правильно!');
+                        }
+                    }, 500);
+                } else {
+                    // Возвращаем на место
+                    currentDraggedItem.style.transition = 'left 0.5s ease, top 0.5s ease';
+                    currentDraggedItem.style.left = originalPositions[currentDraggedItem.id].x + 'px';
+                    currentDraggedItem.style.top = originalPositions[currentDraggedItem.id].y + 'px';
+                    
+                    setTimeout(() => {
+                        currentDraggedItem.style.transition = '';
+                    }, 500);
+                }
+                
+                if (currentTargetDropZone) {
+                    currentTargetDropZone.classList.remove('highlight');
+                }
+                currentDraggedItem = null;
+                currentTargetDropZone = null;
+            }
+            
+            // Назначаем обработчики перемещения
+            document.addEventListener('mousemove', drag);
+            document.addEventListener('touchmove', drag, { passive: false });
+            document.addEventListener('mouseup', endDrag);
+            document.addEventListener('touchend', endDrag);
+        }
+        
+        // 3. ТАЙМЕР
+        const timerDisplay = document.getElementById('timer');
+        const stopBtn = document.getElementById('stopBtn');
+        const alertMsg = document.getElementById('alert');
+        const initialTime = 60000; // 60 секунд
+        let remainingTime = initialTime;
+        let timerInterval;
+        let endTime;
+        
+        // Форматирование времени
+        function formatTime(ms) {
+            const seconds = Math.floor(ms / 1000);
+            const milliseconds = ms % 1000;
+            return `${seconds}.${milliseconds.toString().padStart(3, '0')}`;
+        }
+        
+        // Обновление таймера
+        function updateTimer() {
+            remainingTime = Math.max(0, endTime - Date.now());
+            timerDisplay.textContent = formatTime(remainingTime);
+            
+            // Обновляем размер объекта 4
+            const object4 = document.getElementById('object4');
+            if (object4) {
+                const progress = remainingTime / initialTime;
+                const minScale = 0.2;
+                const scale = minScale + (progress * (1 - minScale));
+                object4.style.transform = `translateX(-50%) scale(${scale})`;
+                object4.style.opacity = 0.5 + (progress * 0.5);
+            }
+            
+            if (remainingTime <= 0) {
+                clearInterval(timerInterval);
+                stopBtn.disabled = true;
+                alertMsg.textContent = "Время вышло!";
+            }
+        }
+        
+        // Запуск таймера
+        function startTimer() {
+            endTime = Date.now() + remainingTime;
+            timerInterval = setInterval(updateTimer, 10);
+            stopBtn.disabled = false;
+            
+            // Сбрасываем объект 4
+            const object4 = document.getElementById('object4');
+            if (object4) {
+                object4.style.transform = 'translateX(-50%) scale(1)';
+                object4.style.opacity = '1';
+            }
+        }
+        
+        // Остановка таймера
+        stopBtn.addEventListener('click', () => {
+            clearInterval(timerInterval);
+            stopBtn.disabled = true;
+        });
+        
+        // 4. НАСТРОЙКИ
+        const settingsButton = document.getElementById('settingsButton');
+        const overlay = document.getElementById('overlay');
+        const settingsWindow = document.getElementById('settingsWindow');
+        const closeBtn = document.getElementById('closeBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        
+        // Открытие настроек
+        settingsButton.addEventListener('click', () => {
+            overlay.style.display = 'block';
+            settingsWindow.style.display = 'block';
+            document.body.style.overflow = 'hidden';
+            
+            // Останавливаем таймер при открытии настроек
+            clearInterval(timerInterval);
+            stopBtn.disabled = true;
+        });
+        
+        // Закрытие настроек
+        function closeSettings() {
+            overlay.style.display = 'none';
+            settingsWindow.style.display = 'none';
+            document.body.style.overflow = '';
+        }
+        
+        closeBtn.addEventListener('click', closeSettings);
+        overlay.addEventListener('click', closeSettings);
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeSettings();
+        });
+        
+        // Кнопка "Заново"
+        restartBtn.addEventListener('click', () => {
+            // Сбрасываем таймер
+            clearInterval(timerInterval);
+            remainingTime = initialTime;
+            timerDisplay.textContent = formatTime(remainingTime);
+            stopBtn.disabled = true;
+            alertMsg.textContent = "";
+            
+            // Сбрасываем игру
+            resetGame();
+            
+            // Сразу запускаем таймер
+            startTimer();
+            
+            // Закрываем настройки
+            closeSettings();
+        });
+        
+        // 5. ЗАПУСК ИГРЫ
+        const preview = document.getElementById('preview');
+        const startPreviewBtn = document.getElementById('startPreview');
+        const timerContainer = document.getElementById('timer-container');
+        
+        startPreviewBtn.addEventListener('click', () => {
+            preview.style.opacity = '0';
+            setTimeout(() => {
+                preview.style.display = 'none';
+                timerContainer.style.display = 'block';
+                
+                // Создаем игровые элементы
+                createGameElements();
+                initDraggables();
+                
+                // Запускаем таймер
+                startTimer();
+            }, 500);
+        });
+        
+        // Инициализация таймера
+        timerDisplay.textContent = formatTime(remainingTime);
+    });
+    </script>
+</body>
+</html>
